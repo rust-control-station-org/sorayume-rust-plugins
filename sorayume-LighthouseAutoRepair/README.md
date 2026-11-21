@@ -8,7 +8,7 @@
 - 作者: `mazurk4`。バージョン: `1.0.0`。
 - 提供元: 自作。外部由来のコードなし。ライセンスは未指定。
 - 対応: Oxide/Rust。必須の追加プラグインなし。Carbon は未検証。
-- 対象: Rust buildid 26479619（2026-11-09 確認）、Oxide.Rust 2.0.7894。ゲーム側の仕様は、同日に Steam から取得した公開版（depot 258552、manifest `7175333784427202048`）の DLL で確認した。
+- 対象: Rust buildid 26479619（2026-11-09 確認）、Oxide.Rust 2.0.7894。
 
 ## 挙動
 
@@ -23,14 +23,13 @@
 - 修理の処理が効かなかった場合（他のプラグインやゲームの変更など）は、エラーをログに出し、プラグインを再読み込みするまで自動修理を止める。毎分の再試行でログを埋めないため。
 - 灯台の修理エフェクト（音・光の演出）は、自動修理では出さない。
 
-### ゲーム側の仕様（実 DLL で確認）
+### ゲーム側の挙動
 
-2026-11-09 に取得した `Assembly-CSharp.dll` を逆コンパイルして確認した内容。
+Rust buildid 26479619 で確認した、灯台とディープシーに関わるゲーム本体の挙動。
 
-- 灯台は `RepairableLighthouse`（`RepairableStructure` → `ConstructableEntity`）。サーバー上の全灯台は `RepairableLighthouse.server_RepairableLighthouses` に登録される。
-- 修理済みかどうかはフラグ `Reserved1`（`IsRepaired`）。素材の進み具合は `ConstructableEntity` の非公開フィールドで、セーブに残る。1か所を叩くと、その進み具合が他の灯台にも写される（`OnRepair` → `CopyBuildProgress`）。
-- 修理が完了したとき、ゲームは `RepairableLighthouse.RepairAll()`（全灯台を修理済みにする）と `DeepSeaManager.OnLighthouseRepaired()`（次に開くまでの時間を `deepsea.lighthouseOpenDelay` にする）を呼ぶ。本プラグインはこの2つの公開メソッドを同じ順で呼ぶ。リフレクションは使わない。
-- ディープシーは `DeepSeaManager.IsWaitingForLighthouse()` が真の間は開かない。灯台が1つもない、一度開いたことがある、または `deepsea.openOnServerWipe` が真なら待たない。
+- サーバー上の灯台は、修理の進み具合を共有する。1か所を修理すると、すべての灯台が修理済みになる。
+- 修理が完了すると、ディープシーは `deepsea.lighthouseOpenDelay` の後に開く。本プラグインは、プレイヤーが修理を完了したときと同じ処理を同じ順で呼ぶ。
+- ディープシーは灯台が修理されるまで開かない。ただし、灯台が1つもないマップ、一度開いたことがある場合、`deepsea.openOnServerWipe` が真の場合は待たない。
 - `deepsea.enabled` が偽のとき、ゲームは灯台を最初から修理済みにする。
 - ゲーム本体の設定 `deepsea.openOnServerWipe true` でも、ワイプ直後からディープシーを開ける（灯台の修理は待たない）。期限まではプレイヤーの修理を待ちたい場合に本プラグインを使う。本プラグインはこの設定を変更しない。
 
@@ -96,4 +95,4 @@
 - [Lighthouse（RustHelp）](https://rusthelp.com/monument/lighthouse)
 - [Oxide Configuration](https://umod.org/documentation/api/configuration)、[Permissions](https://umod.org/documentation/api/permissions)、[Localization](https://umod.org/documentation/api/localization)、[Timers](https://umod.org/documentation/api/timers)
 
-資料の差異: 修理に必要な素材の種類と量は、確認した資料のどれにも書かれていなかった（素材はアセット側の設定で、DLL のコードからは読めない）。本プラグインは素材を使わないため、実装には影響しない。
+資料の差異: 修理に必要な素材の種類と量は、確認した資料のどれにも書かれていなかった。本プラグインは素材を使わないため、実装には影響しない。

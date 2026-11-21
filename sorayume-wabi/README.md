@@ -7,7 +7,7 @@ Rust のソロサーバーで、補填キャンペーンのアイテム・対象
 - ライセンス: 元の MIT License を維持（本文は末尾に掲載）。
 - 管理ディレクトリ・表示名は依頼に合わせて小文字の `sorayume-wabi`。クラス・ファイル名・Oxide 内部名は `Wabi` のまま。
 - 対応: Oxide/Rust。追加プラグイン不要。Newtonsoft.Json は Oxide/Rust 同梱版を使う。Carbon は未検証。
-- 確認対象: Oxide.Rust 2.0.7894 と、2026-11-09 に取得した Rust 公開版 DLL（depot 258552、manifest `7175333784427202048`）。実機で確認した範囲は下記「検証」を参照。
+- 確認対象: Rust buildid 26479619、Oxide.Rust 2.0.7894。実機で確認した範囲は下記「検証」を参照。
 
 ## 挙動
 

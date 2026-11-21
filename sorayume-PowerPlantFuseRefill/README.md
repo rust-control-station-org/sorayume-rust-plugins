@@ -23,22 +23,22 @@
 
 ### 切れるまでの時間の推定
 
-ゲーム本体と同じ計算で、補充しない場合にどの順で切れるかを計算する（buildid 26479619 の `PowergridManager.ServerFuseDeteriorationTick`）。
+ゲーム本体と同じ計算（buildid 26479619 で確認）で、補充しない場合にどの順で切れるかを計算する。
 
 - 毎秒の減り幅は「最大耐久 ÷ `powergrid.fuselifespanseconds` × 速度倍率 × 人数倍率」。
-- 速度倍率は、ゲームが全速の対象に選んだヒューズで1、それ以外はヒューズごとに固定の低速倍率（ゲームの `Server_GetSlowDecayRateScale`、既定 8〜12%）。
+- 速度倍率は、ゲームが全速の対象に選んだヒューズで1、それ以外はヒューズごとに固定の低速倍率（既定 8〜12%）。
 - 全速の対象は、耐久の低い順に `powergrid.fusefulldecaycount` 本。ゲームは毎秒選び直すため、推定でも1本切れるたびに選び直す。
 - 人数倍率はゲームの `Server_GetPopDecayRateScale` に、いまのオンライン人数を渡して得る。
 - 推定の前提は、オンライン人数がこのまま変わらず、補充もしないこと。人数の変化、補充、他のプラグインやゲーム設定の変更でずれる。表示は分単位の四捨五入。
 
-### ゲーム側の仕様（実 DLL で確認）
+### ゲーム側の挙動
 
-Rust buildid 26479619 の `Assembly-CSharp.dll` を逆コンパイルして確認した内容。
+Rust buildid 26479619 で確認した、ヒューズボックスに関わるゲーム本体の挙動。
 
-- ヒューズボックスは `PowergridFuseBox`。ヒューズの格納先は非公開フィールド `inventory`（`ItemContainer`）で、ヘビーヒューズ以外は入らず、1スロット1本。プレイヤーは取り外せず、交換できるのは状態がより良いヒューズとだけ。
-- 本プラグインは `inventory` をリフレクションで取得する。Oxide の Publicizer の有無に関係なく動く。フィールドが見つからない版では何も挿入せず、エラーをログに出す。
-- ステージはヒューズの本数で決まる（`assets/content/config/powergridstageconfig.asset`）。閾値は 1・4・10・18 本（2026-11-09 に実機のアセットから確認）で、送電線の出力は総ソケットに近づくほど上がる（`powergrid.powerlinebasepoweroutput` 5 から `powergrid.powerlinemaxpoweroutput` 50）。
-- 劣化は `PowergridManager` が1秒ごとに計算する。状態の悪い `powergrid.fusefulldecaycount`（3）本は全速で、残りは 8〜12% の速度で劣化する。接続人数が `powergrid.fusedecaylowpop`（10）以下なら、さらに `powergrid.fusedecaylowpopscale`（0.25）倍になる。
+- ヒューズボックスに入るのはヘビーヒューズだけで、1スロット1本。プレイヤーは取り外せず、交換できるのは状態がより良いヒューズとだけ。
+- ゲームの更新でヒューズの格納先が見つからない版では、何も挿入せず、エラーをログに出す。
+- ステージはヒューズの本数で決まる。閾値は 1・4・10・18 本（2026-11-09 に実機で確認）で、送電線の出力は総ソケットに近づくほど上がる（`powergrid.powerlinebasepoweroutput` 5 から `powergrid.powerlinemaxpoweroutput` 50）。
+- 劣化は1秒ごとに計算される。状態の悪い `powergrid.fusefulldecaycount`（3）本は全速で、残りは 8〜12% の速度で劣化する。接続人数が `powergrid.fusedecaylowpop`（10）以下なら、さらに `powergrid.fusedecaylowpopscale`（0.25）倍になる。
   - 既定値でのソロ運用の目安: 全速の1本は 9600 秒 ÷ 0.25 ≒ 10時間40分で壊れる。既定の3時間間隔で十分に追いつく。
 - 補充の代わりに、ゲーム本体の設定でも似た状態は作れる。`powergrid.fuselifespanseconds 0`（劣化なし）や `powergrid.simulatepowerplantfuses`（仮想のヒューズ数）。本プラグインはこれらを変更しない。
 
@@ -119,4 +119,4 @@ powerplantfuse.fill 18
 - [Oxide Configuration](https://umod.org/documentation/api/configuration)、[Permissions](https://umod.org/documentation/api/permissions)、[Localization](https://umod.org/documentation/api/localization)、[Timers](https://umod.org/documentation/api/timers)
 
 資料の差異: Corrosion Hour（プレビュー時点）は、1階のパネルを15スロット、ステージを 1-3/4-9/10-17/18+ 本としている。RustHelp はソケットを計20、ステージの閾値を 1/4/10/18 本としている。\
-実 DLL ではステージの閾値はアセット内にあり、コードからは読めない。総ソケット数は、実機の `powerplantfuse.status` で20と確認した（2026-11-08）。ステージの閾値は、実機の `GetStageForFuseCount` で 1/4/10/18 本と確認した（2026-11-09）。
+総ソケット数は、実機の `powerplantfuse.status` で20と確認した（2026-11-08）。ステージの閾値は、実機で 1/4/10/18 本と確認した（2026-11-09）。

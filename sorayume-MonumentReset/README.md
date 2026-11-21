@@ -8,7 +8,7 @@
 - 作者: `mazurk4`。バージョン: `1.0.0`。
 - 提供元: 自作。外部由来のコードなし。ライセンスは未指定。
 - 対応: Oxide/Rust。必須の追加プラグインなし。Carbon は未検証。
-- 対象: Oxide.Rust 2.0.7894。ゲーム側の仕様は、2026-11-09 に Steam から取得した公開版（depot 258552、manifest `7175333784427202048`）の DLL で確認した。
+- 対象: Rust buildid 26479619（2026-11-09 確認）、Oxide.Rust 2.0.7894。
 
 ## 挙動
 
@@ -47,19 +47,17 @@
 - パズルが出し直すスポナー（`PuzzleReset.GetSpawnGroups()`）は `puzzle` だけで扱い、`loot`・`npc`・`crate` では触れない。
 - 地下トンネル・海底ラボの位置（`EnvironmentManager.Check` の `TrainTunnels`・`UnderwaterLab`）のスポナーは除く。
 
-### ゲーム側の仕様（実 DLL で確認）
+### ゲーム側の挙動
 
-2026-11-09 取得の公開版の `Assembly-CSharp.dll` を逆コンパイルして確認した内容。
+Rust buildid 26479619 で確認した、リセットに関わるゲーム本体の挙動。
 
-- `PuzzleReset`（`FacepunchBehaviour`）は `public static ListHashSet<PuzzleReset> AllResets` に登録される。リセット処理は `public void DoReset(bool skipAlerts = false)`。範囲内のプレイヤーの判定は、定期処理の `ResetTick` 側にあり、`DoReset` を直接呼べば在場でも実行される。
-- `DoReset` の処理: 範囲の放射線を0にする → `CleanupSleepers()` → 自身と `resetPositions` の IO エンティティを `ResetIOEntRecursive` で初期化 → `danglingSpawnedInstances`（ハッキング箱など、セーブされる出現物）を破棄 → 周辺 1m の `SpawnGroup` を `Clear()` → 1秒後に `Spawn()` → `resetObjects` に `OnPuzzleReset` を送る（オイルリグの通知は `skipAlerts` で抑止できる）→ `broadcastResetMessage` ならトースト（`skipAlerts` で抑止）。
-- `CleanupSleepers()` は、`playerDetectionOrigin` から `playerDetectionRadius` 以内の寝ているプレイヤーに 1000 の自殺ダメージを与える。本プラグインはこの条件（地上のプレイヤーを除外する設定は考えず、より広く）で事前に検査し、該当すればそのパズルを呼ばない。
-- IO の初期化（`ResetIOState`）で、ヒューズ差し込み口（`ItemBasedFlowRestrictor`）のヒューズは地面に落ちる。カードリーダーはアクセスを取り消す。パワープラントのヒューズボックス（`PowergridFuseBox`）は `IOEntity` ではないため、`ResetIOEntRecursive` の対象にならない（sorayume-PowerPlantFuseRefill が補充するヒューズは抜けない想定。実機では未確認）。
-- `SpawnGroup` の `Clear()` は出現物を `Kill()` し、`Fill()` は `Spawn(maxPopulation)` を行う。`Monument` フィールドは `Awake` で親の `MonumentInfo` から設定される。`WantsInitialSpawn()` が false のものは初回に出ないスポナー。
-- `IndividualSpawner` の `Clear()` は出現物を `Kill()` するが、内部の参照はエンティティの破棄時に外れるため、同じフレームの `Fill()` では出し直せない。one-time の設定は非公開フィールド `oneTimeSpawner` で、`Fill()` は何もしない。
-- 全スポナーの一覧は `SpawnHandler.SpawnGroups`（internal）、モニュメントの一覧は `TerrainPath.Monuments`（internal。ディープシー内のモニュメントは登録されない）。本プラグインはこの2つと `oneTimeSpawner` をリフレクションで読む。Oxide の Publicizer の有無に関係なく動く。見つからない版ではコマンドが「対応していない」と返し、エラーをログに出す（`oneTimeSpawner` だけが見つからない場合は `IndividualSpawner` を対象外にして続ける）。
-- `MonumentInfo.IsInBounds` は回転を考慮した OBB で判定する。表示名は `displayPhrase.english`。
-- `ConsoleSystem.Arg.Args` はこの版では `StringView[]` のため、引数は `GetString` で読む。
+- パズルのリセットは、ゲーム本体が範囲内にプレイヤーがいないときに行うリセットと同じ処理を呼ぶ。本プラグインから実行すると、範囲内にプレイヤーがいても実行される。
+- ゲーム本体のリセットは、範囲内で寝ているプレイヤーを死亡させる。本プラグインは事前に範囲内の寝ているプレイヤーを調べ、該当すればそのパズルをスキップする。
+- パズルのリセットで、範囲の放射線は0に戻る。ヒューズ差し込み口のヒューズは地面に落ち、カードリーダーのアクセスは取り消される。ハッキング箱などの出現物は消え、箱・NPC は約1秒後に出し直される。
+- パワープラントのヒューズボックスは、パズルのリセットで初期化されない想定（sorayume-PowerPlantFuseRefill が補充するヒューズは抜けない想定。実機では未確認）。
+- ディープシー内のモニュメントは一覧に出ない。
+- ゲームの更新で必要な内部情報が見つからない版では、コマンドが「対応していない」と返し、エラーをログに出す。
+- モニュメントの範囲は、モニュメントの回転を考慮して判定する。表示名はゲームの英語名。
 
 ## コマンドと権限
 

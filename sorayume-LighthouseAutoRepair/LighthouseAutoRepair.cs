@@ -214,7 +214,7 @@ namespace Oxide.Plugins
         }
 
         // -------------------------------------------------------------------
-        // 灯台の状態と修理（RepairableLighthouse・DeepSeaManager を 2026-11-09 の実 DLL で確認）
+        // 灯台の状態と修理（RepairableLighthouse・DeepSeaManager。buildid 26479619 で確認）
         // プレイヤーが修理を終えたときの RepairableLighthouse.OnConstructionComplete と同じく、
         // 全灯台を修理済みにしてから DeepSeaManager.OnLighthouseRepaired を呼ぶ。
         // -------------------------------------------------------------------
