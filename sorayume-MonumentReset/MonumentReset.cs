@@ -8,8 +8,8 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("sorayume-MonumentReset", "mazurk4", "1.0.0")]
-    [Description("Resets monument puzzles, loot, NPCs and locked crates on demand by chat or console command, after an optional countdown warning, for solo servers.")]
+    [Info("sorayume-MonumentReset", "mazurk4", "1.1.0")]
+    [Description("Resets monument puzzles, loot, NPCs and locked crates on demand by chat or console command, after an optional countdown pop-up warning, for solo servers.")]
     public class MonumentReset : RustPlugin
     {
         private const string PermAdmin = "monumentreset.admin";
@@ -73,6 +73,8 @@ namespace Oxide.Plugins
             public string Name;
             public string Grid;
             public MonumentInfo Monument;
+            // カードリーダーの色（accessLevel 1=緑, 2=青, 3=赤）をビットで持つ。一覧のときだけ集計する。
+            public int CardLevels;
             public readonly List<PuzzleReset> Puzzles = new List<PuzzleReset>();
             public readonly List<SpawnerEntry> Spawners = new List<SpawnerEntry>();
 
@@ -166,19 +168,39 @@ namespace Oxide.Plugins
                 ["ConfigInvalid"] = "The MonumentReset config is invalid. Fix it and reload the plugin.",
                 ["NotReady"] = "The server has not finished starting. Try again later.",
                 ["Unsupported"] = "Monument data is not available on this Rust version. Check the server log.",
-                ["UsageChat"] = "Usage: /mreset list | /mreset <id> [puzzle|loot|npc|crate|all ...] | /mreset cancel [id]",
+                ["ChatUsage"] = "Usage: /mreset list [all] | /mreset <id> [puzzle|loot|npc|crate|all ...] | /mreset cancel [id] | /mreset help",
+                ["UsageList"] = "Usage: monumentreset.list [all]",
                 ["UsageRun"] = "Usage: monumentreset.run <id> [puzzle|loot|npc|crate|all ...]",
                 ["UsageCancel"] = "Usage: monumentreset.cancel [id]",
+                ["HelpChat"] = "MonumentReset commands:\n" +
+                    "/mreset list - monuments with keycard readers\n" +
+                    "/mreset list all - every resettable monument\n" +
+                    "/mreset <id> [puzzle|loot|npc|crate|all ...] - reset after a countdown (default: all)\n" +
+                    "/mreset cancel [id] - cancel a scheduled reset (no id: all)\n" +
+                    "/mreset help - show this help",
+                ["HelpConsole"] = "MonumentReset commands:\n" +
+                    "monumentreset.list - monuments with keycard readers\n" +
+                    "monumentreset.list all - every resettable monument\n" +
+                    "monumentreset.run <id> [puzzle|loot|npc|crate|all ...] - reset after a countdown (default: all)\n" +
+                    "monumentreset.cancel [id] - cancel a scheduled reset (no id: all)\n" +
+                    "monumentreset.help - show this help",
                 ["UnknownKind"] = "Unknown reset type: {0}. Use puzzle, loot, npc, crate or all.",
                 ["UnknownMonument"] = "Monument '{0}' was not found. Use list to see the IDs.",
-                ["ListHeader"] = "Monuments: {0}. Columns: ID | name | grid | puzzle/loot/NPC/crate",
-                ["ListRow"] = "{0} | {1} | {2} | {3}/{4}/{5}/{6}",
+                ["CardListHeader"] = "Keycard monuments: {0}. Columns: ID | name | grid | puzzle/loot/NPC/crate | card readers. Use 'list all' for every monument.",
+                ["FullListHeader"] = "All monuments: {0}. Columns: ID | name | grid | puzzle/loot/NPC/crate | card readers",
+                ["MonumentRow"] = "{0} | {1} | {2} | {3}/{4}/{5}/{6} | {7}",
+                ["CardGreen"] = "green",
+                ["CardBlue"] = "blue",
+                ["CardRed"] = "red",
+                ["CardNone"] = "-",
+                ["CardListNone"] = "No resettable monuments with keycard readers were found. Use 'list all' for every monument.",
                 ["ListNone"] = "No resettable monuments were found on this map.",
                 ["NothingToReset"] = "{0} has nothing to reset for: {1}.",
                 ["AlreadyPending"] = "{0} is already scheduled or resetting.",
                 ["Scheduled"] = "{0} will reset in {1} s ({2}). To stop it, cancel {3}.",
-                ["Warning"] = "[MonumentReset] {0} resets in {1} s. Loot, NPCs and puzzles there will be replaced.",
-                ["Resetting"] = "[MonumentReset] {0} is resetting now.",
+                ["ToastWarning"] = "{0} resets in {1} s. Loot, NPCs and puzzles will be replaced.",
+                ["ToastResetting"] = "{0} is resetting now.",
+                ["Resetting"] = "{0} is resetting now.",
                 ["CancelledOne"] = "Cancelled the reset of {0}.",
                 ["CancelledAll"] = "Cancelled {0} scheduled reset(s).",
                 ["NothingToCancel"] = "No reset is waiting to be cancelled.",
@@ -195,19 +217,39 @@ namespace Oxide.Plugins
                 ["ConfigInvalid"] = "MonumentReset の設定が不正です。修正してからプラグインを再読み込みしてください。",
                 ["NotReady"] = "サーバーの起動が完了していません。しばらくしてから再実行してください。",
                 ["Unsupported"] = "この Rust の版ではモニュメントの情報を取得できません。サーバーログを確認してください。",
-                ["UsageChat"] = "使用法: /mreset list | /mreset <ID> [puzzle|loot|npc|crate|all ...] | /mreset cancel [ID]",
+                ["ChatUsage"] = "使用法: /mreset list [all] | /mreset <ID> [puzzle|loot|npc|crate|all ...] | /mreset cancel [ID] | /mreset help",
+                ["UsageList"] = "使用法: monumentreset.list [all]",
                 ["UsageRun"] = "使用法: monumentreset.run <ID> [puzzle|loot|npc|crate|all ...]",
                 ["UsageCancel"] = "使用法: monumentreset.cancel [ID]",
+                ["HelpChat"] = "MonumentReset のコマンド:\n" +
+                    "/mreset list - カードリーダーのあるモニュメントの一覧\n" +
+                    "/mreset list all - リセットできる全モニュメントの一覧\n" +
+                    "/mreset <ID> [puzzle|loot|npc|crate|all ...] - 秒読みのあとにリセット（省略時はすべて）\n" +
+                    "/mreset cancel [ID] - 秒読み中のリセットを取り消す（ID 省略ですべて）\n" +
+                    "/mreset help - このヘルプを表示",
+                ["HelpConsole"] = "MonumentReset のコマンド:\n" +
+                    "monumentreset.list - カードリーダーのあるモニュメントの一覧\n" +
+                    "monumentreset.list all - リセットできる全モニュメントの一覧\n" +
+                    "monumentreset.run <ID> [puzzle|loot|npc|crate|all ...] - 秒読みのあとにリセット（省略時はすべて）\n" +
+                    "monumentreset.cancel [ID] - 秒読み中のリセットを取り消す（ID 省略ですべて）\n" +
+                    "monumentreset.help - このヘルプを表示",
                 ["UnknownKind"] = "不明なリセット種別です: {0}。puzzle、loot、npc、crate、all のいずれかを指定してください。",
                 ["UnknownMonument"] = "モニュメント '{0}' が見つかりません。list で ID を確認してください。",
-                ["ListHeader"] = "モニュメント: {0} 件。列: ID | 名前 | グリッド | パズル/ルート/NPC/特殊箱",
-                ["ListRow"] = "{0} | {1} | {2} | {3}/{4}/{5}/{6}",
+                ["CardListHeader"] = "カードのモニュメント: {0} 件。列: ID | 名前 | グリッド | パズル/ルート/NPC/特殊箱 | カードリーダー。全件は list all。",
+                ["FullListHeader"] = "全モニュメント: {0} 件。列: ID | 名前 | グリッド | パズル/ルート/NPC/特殊箱 | カードリーダー",
+                ["MonumentRow"] = "{0} | {1} | {2} | {3}/{4}/{5}/{6} | {7}",
+                ["CardGreen"] = "緑",
+                ["CardBlue"] = "青",
+                ["CardRed"] = "赤",
+                ["CardNone"] = "-",
+                ["CardListNone"] = "カードリーダーのあるリセット可能なモニュメントはありません。全件は list all で表示します。",
                 ["ListNone"] = "このマップにリセットできるモニュメントはありません。",
                 ["NothingToReset"] = "{0} にはリセットする対象がありません（{1}）。",
                 ["AlreadyPending"] = "{0} はすでにリセットの予約中、またはリセット中です。",
                 ["Scheduled"] = "{0} を {1} 秒後にリセットします（{2}）。取り消すには cancel {3}。",
-                ["Warning"] = "[MonumentReset] {0} は {1} 秒後にリセットされます。ルート・NPC・パズルが入れ替わります。",
-                ["Resetting"] = "[MonumentReset] {0} をリセットします。",
+                ["ToastWarning"] = "{0} は {1} 秒後にリセットされます。ルート・NPC・パズルが入れ替わります。",
+                ["ToastResetting"] = "{0} をリセットします。",
+                ["Resetting"] = "{0} をリセットします。",
                 ["CancelledOne"] = "{0} のリセットを取り消しました。",
                 ["CancelledAll"] = "予約中のリセットを {0} 件取り消しました。",
                 ["NothingToCancel"] = "取り消せるリセットはありません。",
@@ -257,7 +299,7 @@ namespace Oxide.Plugins
         // -------------------------------------------------------------------
         // モニュメントと対象の一覧（コマンド実行時のみ作る。高頻度フックでは使わない）
         // -------------------------------------------------------------------
-        private List<MonumentEntry> BuildCatalog()
+        private List<MonumentEntry> BuildCatalog(bool withCardReaders = false)
         {
             if (TerrainMeta.Path == null || MonumentsField == null || SpawnGroupsField == null)
                 return null;
@@ -330,6 +372,9 @@ namespace Oxide.Plugins
                 }
             }
 
+            if (withCardReaders)
+                AssignCardReaders(entries, byMonument);
+
             IEnumerable spawnGroups = SingletonComponent<SpawnHandler>.Instance == null
                 ? null
                 : SpawnGroupsField.GetValue(SingletonComponent<SpawnHandler>.Instance) as IEnumerable;
@@ -371,6 +416,33 @@ namespace Oxide.Plugins
                     owner.Spawners.Add(spawner);
             }
             return entries;
+        }
+
+        // 一覧の実行時だけ全エンティティを1回走査する（高頻度の処理からは呼ばない）。
+        private static void AssignCardReaders(List<MonumentEntry> entries, Dictionary<MonumentInfo, MonumentEntry> byMonument)
+        {
+            foreach (BaseNetworkable entity in BaseNetworkable.serverEntities)
+            {
+                CardReader reader = entity as CardReader;
+                if (reader == null || reader.IsDestroyed || reader.accessLevel < 1 || reader.accessLevel > 3)
+                    continue;
+                Vector3 position = reader.transform.position;
+                // スポナーと同じく、地下トンネル・海底ラボは対象外。
+                if (EnvironmentManager.Check(position, EnvironmentType.TrainTunnels | EnvironmentType.UnderwaterLab))
+                    continue;
+                MonumentEntry owner = FindOwner(reader.GetComponentInParent<MonumentInfo>(), position, entries, byMonument);
+                if (owner != null)
+                    owner.CardLevels |= 1 << reader.accessLevel;
+            }
+        }
+
+        private string CardsText(int levels, BasePlayer player)
+        {
+            List<string> names = new List<string>(3);
+            if ((levels & (1 << 1)) != 0) names.Add(Message("CardGreen", player));
+            if ((levels & (1 << 2)) != 0) names.Add(Message("CardBlue", player));
+            if ((levels & (1 << 3)) != 0) names.Add(Message("CardRed", player));
+            return names.Count == 0 ? Message("CardNone", player) : string.Join(", ", names);
         }
 
         private static MonumentEntry FindOwner(MonumentInfo parent, Vector3 position, List<MonumentEntry> entries, Dictionary<MonumentInfo, MonumentEntry> byMonument)
@@ -516,9 +588,9 @@ namespace Oxide.Plugins
         // -------------------------------------------------------------------
         // 処理本体（チャット・コンソール共通）
         // -------------------------------------------------------------------
-        private void HandleList(BasePlayer player, Action<string> reply)
+        private void HandleList(BasePlayer player, Action<string> reply, bool all)
         {
-            List<MonumentEntry> catalog = BuildCatalog();
+            List<MonumentEntry> catalog = BuildCatalog(true);
             if (catalog == null)
             {
                 reply(Message("Unsupported", player));
@@ -527,17 +599,18 @@ namespace Oxide.Plugins
             List<string> rows = new List<string>();
             foreach (MonumentEntry entry in catalog)
             {
-                if (!entry.Has(ResetKind.All))
+                if (!entry.Has(ResetKind.All) || (!all && entry.CardLevels == 0))
                     continue;
-                rows.Add(Message("ListRow", player, entry.Id, entry.Name, entry.Grid,
-                    entry.Count(ResetKind.Puzzle), entry.Count(ResetKind.Loot), entry.Count(ResetKind.Npc), entry.Count(ResetKind.Crate)));
+                rows.Add(Message("MonumentRow", player, entry.Id, entry.Name, entry.Grid,
+                    entry.Count(ResetKind.Puzzle), entry.Count(ResetKind.Loot), entry.Count(ResetKind.Npc), entry.Count(ResetKind.Crate),
+                    CardsText(entry.CardLevels, player)));
             }
             if (rows.Count == 0)
             {
-                reply(Message("ListNone", player));
+                reply(Message(all ? "ListNone" : "CardListNone", player));
                 return;
             }
-            StringBuilder chunk = new StringBuilder(Message("ListHeader", player, rows.Count));
+            StringBuilder chunk = new StringBuilder(Message(all ? "FullListHeader" : "CardListHeader", player, rows.Count));
             int lines = 1;
             foreach (string row in rows)
             {
@@ -598,7 +671,7 @@ namespace Oxide.Plugins
                 return;
             }
             reply(Message("Scheduled", player, entry.Id, request.Remaining, KindsText(kinds), entry.Id));
-            Warn(entry, request.Remaining, "Warning");
+            Warn(entry, request.Remaining, "ToastWarning");
             request.Timer = timer.Every(1f, () => Tick(request));
         }
 
@@ -622,7 +695,7 @@ namespace Oxide.Plugins
                 List<MonumentEntry> catalog = BuildCatalog();
                 MonumentEntry entry = catalog == null ? null : Find(catalog, request.Id);
                 if (entry != null)
-                    Warn(entry, request.Remaining, "Warning");
+                    Warn(entry, request.Remaining, "ToastWarning");
             }
         }
 
@@ -670,6 +743,8 @@ namespace Oxide.Plugins
             reply(Message("CancelledAll", player, cancelled));
         }
 
+        // サーバー再起動の通知と同じ Server_Event のポップアップ（トースト）で知らせる。
+        // トークンを空にすると、クライアントは翻訳を引かずに渡した文をそのまま表示する（Translate.Phrase.translated）。
         private void Warn(MonumentEntry entry, int seconds, string key)
         {
             if (config == null || config.ShowWarning != true)
@@ -680,7 +755,7 @@ namespace Oxide.Plugins
                     continue;
                 if (config.WarnInsideOnly == true && !entry.Monument.IsInBounds(target.transform.position))
                     continue;
-                target.ChatMessage(Message(key, target, entry.Name, seconds));
+                target.ShowToast(GameTip.Styles.Server_Event, new Translate.Phrase(string.Empty, Message(key, target, entry.Name, seconds)), false);
             }
         }
 
@@ -696,7 +771,7 @@ namespace Oxide.Plugins
                 Notify(request, Message("MonumentGone", request.Requester, request.Id));
                 return;
             }
-            Warn(entry, 0, "Resetting");
+            Warn(entry, 0, "ToastResetting");
 
             ResetResult result = new ResetResult();
             if ((request.Kinds & ResetKind.Puzzle) != 0)
@@ -842,27 +917,33 @@ namespace Oxide.Plugins
                 reply(Message("NoPermission", player));
                 return;
             }
+            args = args ?? Array.Empty<string>();
+            // ヘルプは設定不正・起動前でも表示する（状態を読まず、何も変更しない）。
+            if (args.Length == 1 && string.Equals((args[0] ?? string.Empty).Trim(), "help", StringComparison.OrdinalIgnoreCase))
+            {
+                reply(Message("HelpChat", player));
+                return;
+            }
             if (!CheckReady(player, reply))
                 return;
-            args = args ?? Array.Empty<string>();
             if (args.Length == 0)
             {
-                reply(Message("UsageChat", player));
+                reply(Message("ChatUsage", player));
                 return;
             }
             string first = (args[0] ?? string.Empty).Trim();
             if (string.Equals(first, "list", StringComparison.OrdinalIgnoreCase))
             {
-                if (args.Length != 1)
-                    reply(Message("UsageChat", player));
+                if (args.Length > 2 || (args.Length == 2 && !IsAll(args[1])))
+                    reply(Message("ChatUsage", player));
                 else
-                    HandleList(player, reply);
+                    HandleList(player, reply, args.Length == 2);
                 return;
             }
             if (string.Equals(first, "cancel", StringComparison.OrdinalIgnoreCase))
             {
                 if (args.Length > 2)
-                    reply(Message("UsageChat", player));
+                    reply(Message("ChatUsage", player));
                 else
                     HandleCancel(player, reply, args.Length == 2 ? args[1] : null);
                 return;
@@ -875,7 +956,7 @@ namespace Oxide.Plugins
             HandleRun(player, reply, first, kinds, "Player " + player.UserIDString);
         }
 
-        private bool CanUseConsole(ConsoleSystem.Arg arg, out BasePlayer player)
+        private bool CanUseConsole(ConsoleSystem.Arg arg, out BasePlayer player, bool requireReady = true)
         {
             player = null;
             if (arg.Connection != null)
@@ -888,7 +969,12 @@ namespace Oxide.Plugins
                 }
             }
             BasePlayer requester = player;
-            return CheckReady(requester, message => arg.ReplyWith(message));
+            return !requireReady || CheckReady(requester, message => arg.ReplyWith(message));
+        }
+
+        private static bool IsAll(string value)
+        {
+            return string.Equals((value ?? string.Empty).Trim(), "all", StringComparison.OrdinalIgnoreCase);
         }
 
         // ConsoleSystem.Arg.Args は版によって型が違う（StringView[] など）ため、GetString で読む。
@@ -910,9 +996,23 @@ namespace Oxide.Plugins
         {
             if (!CanUseConsole(arg, out BasePlayer player))
                 return;
+            string[] args = ArgsOf(arg);
+            if (args.Length > 1 || (args.Length == 1 && !IsAll(args[0])))
+            {
+                arg.ReplyWith(Message("UsageList", player));
+                return;
+            }
             List<string> lines = new List<string>();
-            HandleList(player, lines.Add);
+            HandleList(player, lines.Add, args.Length == 1);
             arg.ReplyWith(string.Join("\n", lines));
+        }
+
+        [ConsoleCommand("monumentreset.help")]
+        private void HelpConsoleCommand(ConsoleSystem.Arg arg)
+        {
+            if (!CanUseConsole(arg, out BasePlayer player, requireReady: false))
+                return;
+            arg.ReplyWith(Message("HelpConsole", player));
         }
 
         [ConsoleCommand("monumentreset.run")]

@@ -15,7 +15,7 @@ Rust ゲームのソロサーバー向け Oxide/uMod プラグイン集です。
 | SoloServerRules | Code Lock の他者によるコード入力と、寝袋・ベッドの他者への割り当てを制限 | 1.2.0 | [クイックスタート](sorayume-SoloServerRules/クイックスタート.md) / [詳細](sorayume-SoloServerRules/README.md) |
 | PowerPlantFuseRefill | パワープラントのヘビーヒューズ補充と状態・推定寿命の表示 | 1.0.0 | [クイックスタート](sorayume-PowerPlantFuseRefill/クイックスタート.md) / [詳細](sorayume-PowerPlantFuseRefill/README.md) |
 | LighthouseAutoRepair | ワイプから指定時間後に未修理の灯台を自動修理 | 1.0.0 | [クイックスタート](sorayume-LighthouseAutoRepair/クイックスタート.md) / [詳細](sorayume-LighthouseAutoRepair/README.md) |
-| MonumentReset | モニュメントのパズル・箱・NPC を手動リセット | 1.0.0 | [クイックスタート](sorayume-MonumentReset/クイックスタート.md) / [詳細](sorayume-MonumentReset/README.md) |
+| MonumentReset | モニュメントのパズル・箱・NPC を手動リセット | 1.1.0 | [クイックスタート](sorayume-MonumentReset/クイックスタート.md) / [詳細](sorayume-MonumentReset/README.md) |
 | Wabi | 対象・期限付きの補填配布と受領履歴の管理 | 1.1.0 | [クイックスタート](sorayume-wabi/クイックスタート.md) / [詳細](sorayume-wabi/README.md) |
 
 ## 導入
