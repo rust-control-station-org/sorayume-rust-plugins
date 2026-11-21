@@ -1,0 +1,111 @@
+# sorayume-MonumentReset
+
+導入と最初の操作は [クイックスタート](クイックスタート.md) を参照。
+
+管理者がモニュメントを名前で指定して、パズル・ルート箱・NPC・特殊箱を初期状態に戻す。\
+ゲーム本体のパズルリセットは周期が長く、範囲内にプレイヤーがいると止まる。ソロサーバーで、好きなときにモニュメントを回し直すためのプラグイン。
+
+- 作者: `mazurk4`。バージョン: `1.0.0`。
+- 提供元: 自作。外部由来のコードなし。ライセンスは未指定。
+- 対応: Oxide/Rust。必須の追加プラグインなし。Carbon は未検証。
+- 対象: Oxide.Rust 2.0.7894。ゲーム側の仕様は、2026-11-09 に Steam から取得した公開版（depot 258552、manifest `7175333784427202048`）の DLL で確認した。
+
+## 挙動
+
+- 対象は地上・海上のモニュメント（オイルリグを含む）。地下トンネル・海底ラボ・ディープシーは対象外。
+- 起動は手動のコマンドだけ。定期実行や、ゲーム本体のリセット周期の変更はしない。
+- リセットの種類は4つ。省略時（または `all`）はすべて行う。
+
+| 種類 | 内容 |
+| --- | --- |
+| `puzzle` | モニュメント内の `PuzzleReset` ごとに、ゲーム本体のリセット処理（`DoReset`）を呼ぶ。カードリーダー・ドア・スイッチ・ヒューズ差し込み口などの IO を戻し、パズルに属するルート箱・NPC・ハッキング箱を出し直す。ゲーム本体のリセット周期はここから数え直す。 |
+| `loot` | パズルに属さない、ルート箱・ドラム缶などのスポナー（`LootContainer` を出すもの）を消して出し直す。 |
+| `npc` | パズルに属さない、NPC を出すスポナーを消して出し直す。 |
+| `crate` | パズルに属さない、ハッキング箱（`HackableLockedCrate`）を出すスポナーを消して出し直す。 |
+
+- 範囲内にプレイヤーがいても実行する。実行前に秒読み（既定 10 秒）を行い、警告をチャットに出す。警告の有無、秒数、警告の対象（モニュメント内のプレイヤーだけか全員か）は設定で変えられる。秒読みの残り 60・30・10・5・3・2・1 秒と、実行の瞬間に警告する。
+- 秒読み中は取り消せる。同じモニュメントへの重複した実行は拒否する。
+- 消したスポナーは、ゲーム本体と同じく1秒後に出し直す（消したエンティティの破棄がフレーム末になるため）。出し直しは各スポナーの上限まで（`SpawnGroup.Fill`）。プレイヤーが重なっている出現位置には出ない（ゲーム本体の判定）。
+- 箱に残っていた中身は消える。プレイヤーが置いた物・落とした物・寝袋・建築物には触れない（スポナーが出したエンティティだけが対象）。
+- イベントでだけ出るスポナー（初回出現しない設定のもの）は、消すだけで出し直さない。たとえば、すでに出ている増援が消える。
+- 一度だけ出すスポナー（`IndividualSpawner` の one-time 設定）は、出し直せないため対象外。
+- 寝ているプレイヤーがパズルの検知範囲にいる場合、そのパズルはスキップして報告する。ゲーム本体の `DoReset` は範囲内の寝ているプレイヤーを即死させるため（下記）。ほかの種類は通常どおり行う。
+- ゲーム本体のトースト通知と、オイルリグのリセット通知（ワールド通知）は出さない。代わりにこのプラグインの警告を出す。
+- 結果（パズル数、消したスポナー数、出し直したエンティティ数、失敗数）を実行者に返し、サーバーログにも残す。処理の失敗は件数で報告し、ほかの処理は続ける。
+
+### モニュメントの ID
+
+- ID はモニュメントのプレハブ名から作る（例: `launch_site_1`、`airfield_1`）。英小文字・数字・`_` 以外は `_` に置き換える。大文字小文字は区別しない。
+- 同じプレハブが複数あるときは、ワールド座標（x、次に z）の小さい順に `-1`、`-2` … を付ける（例: `gas_station_1-1`）。座標はマップごとに固定のため、再起動後も同じ ID になる。ワイプでマップが変わると変わる。
+- 一覧には、リセットできる対象が1つ以上あるモニュメントだけを出す。
+
+### 対象の判定
+
+- パズル: `PuzzleReset` の親の `MonumentInfo`。なければ、位置を範囲（`MonumentInfo.IsInBounds`）に含むモニュメントのうち、範囲が最も小さいもの。
+- スポナー: `SpawnGroup.Monument`（ゲームが設定する親のモニュメント）、親の `MonumentInfo`、範囲の順で判定する。
+- 種類はスポナーが出すプレハブで決める。1つのスポナーに複数の種類が混ざるときは NPC、特殊箱、ルート箱の順に優先する。どれでもないスポナー（車両・採集物など）は対象外。
+- パズルが出し直すスポナー（`PuzzleReset.GetSpawnGroups()`）は `puzzle` だけで扱い、`loot`・`npc`・`crate` では触れない。
+- 地下トンネル・海底ラボの位置（`EnvironmentManager.Check` の `TrainTunnels`・`UnderwaterLab`）のスポナーは除く。
+
+### ゲーム側の仕様（実 DLL で確認）
+
+2026-11-09 取得の公開版の `Assembly-CSharp.dll` を逆コンパイルして確認した内容。
+
+- `PuzzleReset`（`FacepunchBehaviour`）は `public static ListHashSet<PuzzleReset> AllResets` に登録される。リセット処理は `public void DoReset(bool skipAlerts = false)`。範囲内のプレイヤーの判定は、定期処理の `ResetTick` 側にあり、`DoReset` を直接呼べば在場でも実行される。
+- `DoReset` の処理: 範囲の放射線を0にする → `CleanupSleepers()` → 自身と `resetPositions` の IO エンティティを `ResetIOEntRecursive` で初期化 → `danglingSpawnedInstances`（ハッキング箱など、セーブされる出現物）を破棄 → 周辺 1m の `SpawnGroup` を `Clear()` → 1秒後に `Spawn()` → `resetObjects` に `OnPuzzleReset` を送る（オイルリグの通知は `skipAlerts` で抑止できる）→ `broadcastResetMessage` ならトースト（`skipAlerts` で抑止）。
+- `CleanupSleepers()` は、`playerDetectionOrigin` から `playerDetectionRadius` 以内の寝ているプレイヤーに 1000 の自殺ダメージを与える。本プラグインはこの条件（地上のプレイヤーを除外する設定は考えず、より広く）で事前に検査し、該当すればそのパズルを呼ばない。
+- IO の初期化（`ResetIOState`）で、ヒューズ差し込み口（`ItemBasedFlowRestrictor`）のヒューズは地面に落ちる。カードリーダーはアクセスを取り消す。パワープラントのヒューズボックス（`PowergridFuseBox`）は `IOEntity` ではないため、`ResetIOEntRecursive` の対象にならない（sorayume-PowerPlantFuseRefill が補充するヒューズは抜けない想定。実機では未確認）。
+- `SpawnGroup` の `Clear()` は出現物を `Kill()` し、`Fill()` は `Spawn(maxPopulation)` を行う。`Monument` フィールドは `Awake` で親の `MonumentInfo` から設定される。`WantsInitialSpawn()` が false のものは初回に出ないスポナー。
+- `IndividualSpawner` の `Clear()` は出現物を `Kill()` するが、内部の参照はエンティティの破棄時に外れるため、同じフレームの `Fill()` では出し直せない。one-time の設定は非公開フィールド `oneTimeSpawner` で、`Fill()` は何もしない。
+- 全スポナーの一覧は `SpawnHandler.SpawnGroups`（internal）、モニュメントの一覧は `TerrainPath.Monuments`（internal。ディープシー内のモニュメントは登録されない）。本プラグインはこの2つと `oneTimeSpawner` をリフレクションで読む。Oxide の Publicizer の有無に関係なく動く。見つからない版ではコマンドが「対応していない」と返し、エラーをログに出す（`oneTimeSpawner` だけが見つからない場合は `IndividualSpawner` を対象外にして続ける）。
+- `MonumentInfo.IsInBounds` は回転を考慮した OBB で判定する。表示名は `displayPhrase.english`。
+- `ConsoleSystem.Arg.Args` はこの版では `StringView[]` のため、引数は `GetString` で読む。
+
+## コマンドと権限
+
+| 入口 | 構文 | 内容 |
+| --- | --- | --- |
+| チャット | `/mreset list` | リセットできるモニュメントの ID・名前・グリッド・種類ごとの件数（パズル/ルート/NPC/特殊箱）を表示する。 |
+| チャット | `/mreset <ID> [puzzle\|loot\|npc\|crate\|all ...]` | 秒読みのあとにリセットする。種類を省略するとすべて。 |
+| チャット | `/mreset cancel [ID]` | 秒読み中のリセットを取り消す。ID を省略すると、秒読み中のものをすべて取り消す。 |
+| コンソール | `monumentreset.list` | 一覧（チャットと同じ）。 |
+| コンソール | `monumentreset.run <ID> [種類 ...]` | リセット（チャットと同じ）。 |
+| コンソール | `monumentreset.cancel [ID]` | 取り消し（チャットと同じ）。 |
+
+- 使える入口: サーバーコンソールと RCON（接続を持たない実行）は常に許可。チャットと F1 コンソールは、管理者（`IsAdmin`）か `monumentreset.admin` の権限を持つプレイヤーに限る（既存プラグインと同じ扱い）。
+- 権限の付与例: `oxide.grant user <SteamID> monumentreset.admin`。
+- 種類の指定は8個まで。不明な種類、多すぎる引数、存在しない ID は、何もせずに理由を返す。返信に含める入力は山括弧を除き、長さを制限する。
+- 実行後の結果はチャットの実行者に返す。サーバーコンソール・RCON からの実行は、結果をサーバーログで確認する。
+- 返信と警告は各プレイヤーの言語（`/lang ja` または `/lang en`）、サーバーコンソールと RCON ではサーバーの言語で表示する。言語ファイルは `oxide/lang/en/MonumentReset.json` と `oxide/lang/ja/MonumentReset.json`。サーバーログは英語。
+
+## 設定
+
+`oxide/config/MonumentReset.json`。ファイルがなければ初回ロード時に既定値で作成する。設定のキーと既定値は次の表を参照。
+
+| キー | 既定値 | 範囲 | 意味 |
+| --- | --- | --- | --- |
+| `Show warning` | `true` | `true`/`false` | 秒読みと実行時の警告をチャットに出す。`false` でも秒読みの待ち時間はある。 |
+| `Countdown seconds` | `10` | 0〜120 | 実行までの秒数。0 なら即時。 |
+| `Warn players within monument bounds only` | `true` | `true`/`false` | `true` ならモニュメントの範囲内にいるプレイヤーだけに警告する。`false` なら接続中の全員。 |
+
+- キーの欠損、範囲外、壊れた JSON があった場合は、コマンドを止め、エラーをログに出す。ファイルは上書きしない。修正してから `oxide.reload MonumentReset` を実行する。
+- 永続データはない。予約中のリセットは再起動・再読み込みで消える。
+- 外部通信はない。
+
+## 導入・更新・撤去
+
+1. 既存の `oxide/plugins/MonumentReset.cs`、`oxide/config/MonumentReset.json`、言語ファイルをバックアップする。
+2. `MonumentReset.cs` を `oxide/plugins/MonumentReset.cs` に配置する（自動でロードされる）。更新も同名で上書きし、必要なら `oxide.reload MonumentReset` を実行する。
+3. 権限を付与し、`/mreset list` で ID を確認する。
+
+撤去は `oxide.unload MonumentReset` の後に本体を移動する。秒読み中のリセットは取り消され、消去済みで出し直し待ちのスポナーはアンロード時にその場で出し直す。\
+リセットしたモニュメントの状態はゲーム内に残り、以後はゲーム本体の周期で動く。復元時はバックアップを戻してロードする。
+
+## 検証
+
+2026-11-21、Rust buildid 26479619 / Oxide.Rust 2.0.7894 を対象に、本プラグインのコンパイル・ロード・日英メッセージの登録・アンロード・再ロードの確認が成功（管理者報告）。`monumentreset.list` の応答までを確認対象とし、実際のリセットと他プラグインへの影響は未確認。代替 API を使った通常テストでは、権限、不正入力、秒読み・取り消し、対象の分類、アンロード時の後始末を確認。
+
+参照:
+
+- [Oxide Commands](https://umod.org/documentation/api/commands)、[Permissions](https://umod.org/documentation/api/permissions)、[Localization](https://umod.org/documentation/api/localization)、[Timers](https://umod.org/documentation/api/timers)、[Configuration](https://umod.org/documentation/api/configuration)
+- [Facepunch Rust Wiki](https://wiki.facepunch.com/rust)（モニュメントのパズルリセットの公式な説明は未確認）
